@@ -16,24 +16,22 @@ class GameEngine:
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("monospace", 22)
         self.big_font = pygame.font.SysFont("monospace", 38, bold=True)
-        self.hud_font = self._fit_font(HUD_TEXT, WIDTH - 16)
-        self.reset()
-
-    @staticmethod
-    def _fit_font(text, max_width, start=22, minimum=8):
-        """Largest monospace font size (<= start) whose rendering of text fits max_width."""
-        size = start
-        while size > minimum:
-            f = pygame.font.SysFont("monospace", size)
-            if f.size(text)[0] <= max_width:
-                return f
+        # HUD font: shrink until the text fits the window width
+        size = 22
+        self.hud_font = pygame.font.SysFont("monospace", size)
+        while size > 8 and self.hud_font.size(HUD_TEXT)[0] > WIDTH - 16:
             size -= 1
-        return pygame.font.SysFont("monospace", minimum)
+            self.hud_font = pygame.font.SysFont("monospace", size)
+        self.reset()
 
     def reset(self):
         self.walls = generate_maze(COLS, ROWS)
         self.player = Player(0, 0)
-        self.enemy = Enemy(ROWS-1, COLS-1)
+        self.enemies = [
+            Enemy(ROWS-1, COLS-1),
+            Enemy(0, COLS-1),
+            Enemy(ROWS-1, 0),
+        ]
         self.exit_rect = pygame.Rect((COLS//2)*CELL+5, (ROWS//2)*CELL+5, CELL-10, CELL-10)
         self.caught = False
         self.won = False
@@ -48,8 +46,9 @@ class GameEngine:
         if self.caught or self.won: return
         keys = pygame.key.get_pressed()
         self.player.move(keys, self.walls, ROWS, COLS)
-        self.enemy.update(self.walls, self.player, ROWS, COLS)
-        if self.player.rect.colliderect(self.enemy.rect):
+        for enemy in self.enemies:
+            enemy.update(self.walls, self.player, ROWS, COLS)
+        if any(self.player.rect.colliderect(e.rect) for e in self.enemies):
             self.caught = True
         if self.player.rect.colliderect(self.exit_rect):
             self.won = True
@@ -69,7 +68,8 @@ class GameEngine:
         lbl=self.font.render("EXIT",True,(20,80,20))
         self.screen.blit(lbl,(self.exit_rect.x+2,self.exit_rect.y+6))
         self.player.draw(self.screen)
-        self.enemy.draw(self.screen)
+        for enemy in self.enemies:
+            enemy.draw(self.screen)
         hud=pygame.Rect(0,ROWS*CELL,WIDTH,50)
         pygame.draw.rect(self.screen,(30,30,50),hud)
         info=self.hud_font.render(HUD_TEXT,True,(200,200,200))
