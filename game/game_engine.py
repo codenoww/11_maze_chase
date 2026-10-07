@@ -6,6 +6,7 @@ COLS, ROWS = 13, 11
 WIDTH = COLS * CELL
 HEIGHT = ROWS * CELL + 50
 FPS = 60
+HUD_TEXT = "Reach EXIT before the enemy catches you!  R=Restart"
 
 class GameEngine:
     def __init__(self):
@@ -15,7 +16,19 @@ class GameEngine:
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("monospace", 22)
         self.big_font = pygame.font.SysFont("monospace", 38, bold=True)
+        self.hud_font = self._fit_font(HUD_TEXT, WIDTH - 16)
         self.reset()
+
+    @staticmethod
+    def _fit_font(text, max_width, start=22, minimum=8):
+        """Largest monospace font size (<= start) whose rendering of text fits max_width."""
+        size = start
+        while size > minimum:
+            f = pygame.font.SysFont("monospace", size)
+            if f.size(text)[0] <= max_width:
+                return f
+            size -= 1
+        return pygame.font.SysFont("monospace", minimum)
 
     def reset(self):
         self.walls = generate_maze(COLS, ROWS)
@@ -59,8 +72,8 @@ class GameEngine:
         self.enemy.draw(self.screen)
         hud=pygame.Rect(0,ROWS*CELL,WIDTH,50)
         pygame.draw.rect(self.screen,(30,30,50),hud)
-        info=self.font.render("Reach EXIT before the enemy catches you!  R=Restart",True,(200,200,200))
-        self.screen.blit(info,(8,ROWS*CELL+14))
+        info=self.hud_font.render(HUD_TEXT,True,(200,200,200))
+        self.screen.blit(info,(8,ROWS*CELL+(50-info.get_height())//2))
         if self.caught:
             self._overlay("CAUGHT!", (220,60,60))
         if self.won:
