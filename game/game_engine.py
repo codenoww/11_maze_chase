@@ -7,9 +7,18 @@ COLS, ROWS = 13, 11
 WIDTH = COLS * CELL
 HEIGHT = ROWS * CELL + 50
 FPS = 60
+HUD_H = 50
 HUD_TEXT = "Reach EXIT before the enemy catches you!  R=Restart"
+HUD_STATS_WORST = "Speed: 9   Survived: 99999s"  # widest stats line, used for font fitting
 FREEZE_FRAMES = 300
 PELLET_RADIUS = 8
+
+# difficulty ramp
+BASE_INTERVAL = 20
+MIN_INTERVAL = 5
+RAMP_STEP = 2
+RAMP_MS = 15000
+MAX_REDUCTIONS = (BASE_INTERVAL - MIN_INTERVAL + RAMP_STEP - 1) // RAMP_STEP  # 8 -> tier 9
 
 class GameEngine:
     def __init__(self):
@@ -19,10 +28,14 @@ class GameEngine:
         self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("monospace", 22)
         self.big_font = pygame.font.SysFont("monospace", 38, bold=True)
-        # HUD font: shrink until the text fits the window width
+        # HUD font: shrink until both lines fit the window width and the bar height
         size = 22
         self.hud_font = pygame.font.SysFont("monospace", size)
-        while size > 8 and self.hud_font.size(HUD_TEXT)[0] > WIDTH - 16:
+        while size > 8 and (
+            self.hud_font.size(HUD_TEXT)[0] > WIDTH - 16
+            or self.hud_font.size(HUD_STATS_WORST)[0] > WIDTH - 16
+            or self.hud_font.get_height() * 2 > HUD_H - 6
+        ):
             size -= 1
             self.hud_font = pygame.font.SysFont("monospace", size)
         self.reset()
@@ -40,6 +53,12 @@ class GameEngine:
         self.won = False
         self.freeze_timer = 0
         self.pellet_rect = self._spawn_pellet()
+        # difficulty ramp + score
+        self.start_ticks = pygame.time.get_ticks()
+        self.speed_tier = 1
+        self.score = 0
+        for e in self.enemies:
+            e.move_interval = BASE_INTERVAL
 
     def _spawn_pellet(self):
         # any cell except the player start, the enemy starts, and the exit
@@ -58,6 +77,18 @@ class GameEngine:
 
     def update(self):
         if self.caught or self.won: return
+
+        # survival score: +1 per frame while alive
+        self.score += 1
+
+        # difficulty ramp: every RAMP_MS, enemies move RAMP_STEP frames faster (min MIN_INTERVAL)
+        elapsed = pygame.time.get_ticks() - self.start_ticks
+        reductions = min(elapsed // RAMP_MS, MAX_REDUCTIONS)
+        interval = max(MIN_INTERVAL, BASE_INTERVAL - RAMP_STEP * reductions)
+        self.speed_tier = 1 + reductions
+        for e in self.enemies:
+            e.move_interval = interval
+
         keys = pygame.key.get_pressed()
         self.player.move(keys, self.walls, ROWS, COLS)
 
@@ -102,10 +133,18 @@ class GameEngine:
         self.player.draw(self.screen)
         for enemy in self.enemies:
             enemy.draw(self.screen)
-        hud=pygame.Rect(0,ROWS*CELL,WIDTH,50)
+
+        # HUD: line 1 = instructions, line 2 = speed tier + survival time
+        hud=pygame.Rect(0,ROWS*CELL,WIDTH,HUD_H)
         pygame.draw.rect(self.screen,(30,30,50),hud)
+        line_h = self.hud_font.get_height()
+        top = ROWS*CELL + (HUD_H - 2*line_h)//2
         info=self.hud_font.render(HUD_TEXT,True,(200,200,200))
-        self.screen.blit(info,(8,ROWS*CELL+(50-info.get_height())//2))
+        self.screen.blit(info,(8,top))
+        stats_text = f"Speed: {self.speed_tier}   Survived: {self.score // 60}s"
+        stats=self.hud_font.render(stats_text,True,(255,220,120))
+        self.screen.blit(stats,(8,top+line_h))
+
         if self.caught:
             self._overlay("CAUGHT!", (220,60,60))
         if self.won:
@@ -117,9 +156,11 @@ class GameEngine:
         surf.fill((0,0,0,140))
         self.screen.blit(surf,(0,0))
         msg=self.big_font.render(text,True,color)
+        score_txt=self.font.render(f"Score: {self.score}  ({self.score // 60}s survived)",True,(255,220,120))
         sub=self.font.render("Press R to Restart",True,(200,200,200))
-        self.screen.blit(msg,(WIDTH//2-msg.get_width()//2,ROWS*CELL//2-30))
-        self.screen.blit(sub,(WIDTH//2-sub.get_width()//2,ROWS*CELL//2+20))
+        self.screen.blit(msg,(WIDTH//2-msg.get_width()//2,ROWS*CELL//2-40))
+        self.screen.blit(score_txt,(WIDTH//2-score_txt.get_width()//2,ROWS*CELL//2+10))
+        self.screen.blit(sub,(WIDTH//2-sub.get_width()//2,ROWS*CELL//2+40))
 
     def run(self):
         running=True
