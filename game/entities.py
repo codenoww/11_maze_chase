@@ -2,8 +2,7 @@ import pygame
 from game.maze import CELL
 
 SPEED = 2
-WALL_T = 3  # wall thickness in px, matches the line width used when drawing
-
+WALL_T = 4  # collision thickness of a wall line (drawn at 3px)
 
 class Player:
     def __init__(self, r, c):
@@ -25,33 +24,27 @@ class Player:
 
     def _valid(self, rect, walls, rows, cols):
         # stay inside the grid
-        if rect.left < 0 or rect.top < 0 or rect.right > cols*CELL or rect.bottom > rows*CELL:
-            return False
-        # check only the cells the rect touches (plus a small margin so
-        # walls sitting exactly on a cell border are never missed)
-        probe = rect.inflate(4, 4)
-        r0 = max(0, probe.top // CELL)
-        r1 = min(rows-1, (probe.bottom-1) // CELL)
-        c0 = max(0, probe.left // CELL)
-        c1 = min(cols-1, (probe.right-1) // CELL)
+        for px,py in [(rect.left,rect.top),(rect.right-1,rect.top),(rect.left,rect.bottom-1),(rect.right-1,rect.bottom-1)]:
+            cr,cc=py//CELL,px//CELL
+            if not(0<=cr<rows and 0<=cc<cols): return False
+        # collide with the wall segments of every cell the rect touches (+1 cell margin)
+        r0 = max(0, rect.top//CELL - 1)
+        r1 = min(rows-1, rect.bottom//CELL + 1)
+        c0 = max(0, rect.left//CELL - 1)
+        c1 = min(cols-1, rect.right//CELL + 1)
         h = WALL_T // 2
         for r in range(r0, r1+1):
             for c in range(c0, c1+1):
-                x, y = c*CELL, r*CELL
                 top, bottom, right, left = walls[r][c]
-                if top and rect.colliderect(pygame.Rect(x-h, y-h, CELL+WALL_T, WALL_T)):
-                    return False
-                if bottom and rect.colliderect(pygame.Rect(x-h, y+CELL-h, CELL+WALL_T, WALL_T)):
-                    return False
-                if right and rect.colliderect(pygame.Rect(x+CELL-h, y-h, WALL_T, CELL+WALL_T)):
-                    return False
-                if left and rect.colliderect(pygame.Rect(x-h, y-h, WALL_T, CELL+WALL_T)):
-                    return False
+                x, y = c*CELL, r*CELL
+                if top and rect.colliderect(pygame.Rect(x-h, y-h, CELL+WALL_T, WALL_T)): return False
+                if bottom and rect.colliderect(pygame.Rect(x-h, y+CELL-h, CELL+WALL_T, WALL_T)): return False
+                if left and rect.colliderect(pygame.Rect(x-h, y-h, WALL_T, CELL+WALL_T)): return False
+                if right and rect.colliderect(pygame.Rect(x+CELL-h, y-h, WALL_T, CELL+WALL_T)): return False
         return True
 
     def draw(self, screen):
         pygame.draw.ellipse(screen, self.color, self.rect)
-
 
 class Enemy:
     def __init__(self, r, c):
@@ -59,10 +52,14 @@ class Enemy:
         cx, cy = c*CELL+CELL//2, r*CELL+CELL//2
         self.rect = pygame.Rect(cx-12, cy-12, 24, 24)
         self.color = (220, 60, 60)
+        self.frozen_color = (110, 160, 255)
+        self.frozen = False
         self.timer = 0
         self.move_interval = 20  # frames between cell moves
 
     def update(self, walls, player, rows, cols):
+        if self.frozen:
+            return
         from game.maze import bfs
         self.timer += 1
         if self.timer >= self.move_interval:
@@ -76,7 +73,11 @@ class Enemy:
                 self.rect.center = (cx, cy)
 
     def draw(self, screen):
-        pygame.draw.rect(screen, self.color, self.rect, border_radius=5)
+        color = self.frozen_color if self.frozen else self.color
+        pygame.draw.rect(screen, color, self.rect, border_radius=5)
+        if self.frozen:
+            # icy outline so the frozen state is obvious
+            pygame.draw.rect(screen, (200, 230, 255), self.rect, width=2, border_radius=5)
         # eyes
         for ex in [self.rect.x+4, self.rect.x+14]:
             pygame.draw.circle(screen, (255,255,255), (ex, self.rect.y+8), 4)
